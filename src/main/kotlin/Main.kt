@@ -65,6 +65,9 @@ suspend fun refreshToken(refreshToken: String): Pair<String, String> {
 
 @OptIn(ExperimentalStdlibApi::class)
 fun main() {
+    println(parseDashlessUUID(
+        "5231b533ba17478798a3f2df37de2aD7"
+    ))
     embeddedServer(Netty, port = 8080) {
         install(CallLogging)
         install(IgnoreTrailingSlash)
@@ -133,7 +136,7 @@ fun main() {
                     profiles.forEach {
                         add(
                             jsonMapper.createObjectNode()
-                                .apply { put("name", it.username); put("id", it.uuid.toString().replace("-", "")) })
+                                .apply { put("name", it.username); put("id", it.uuid.dashless()) })
                     }
                 }
                 res.putObject("selectedProfile").apply {
@@ -143,7 +146,7 @@ fun main() {
                             put("name", it.username);
                             put(
                                 "id",
-                                it.uuid.toString().replace("-", "")
+                                it.uuid.dashless()
                             )
                         }
                 }
@@ -166,14 +169,29 @@ fun main() {
                         put("name", it.username);
                         put(
                             "id",
-                            it.uuid.toString().replace("-", "")
+                            it.uuid.dashless()
                         )
                     }
                 }
                 println(res)
                 call.respond(res)
             }
-            get("/session/session/minecraft/profile/{id}") {
+            get("/sessionserver/session/minecraft/profile/{id}") {
+                val profile = getProfile(parseDashlessUUID(call.parameters["id"]!!))!!
+                val res = jsonMapper.createObjectNode().apply {
+                    put("id", profile.uuid.dashless())
+                    put("name", profile.username)
+                    putArray("properties").addObject().apply {
+                        put("name", "textures")
+                        put("value", jsonMapper.writeValueAsString(jsonMapper.createObjectNode().apply {
+                            put("timestamp", System.currentTimeMillis())
+                            put("profileId", profile.uuid.dashless())
+                            put("profileName", profile.username)
+                            putObject("textures")
+                        }).encodeBase64())
+                    }
+                }
+                call.respond(res)
             }
             get("/oauth") {
                 call.respondRedirect(
