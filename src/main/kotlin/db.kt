@@ -56,6 +56,9 @@ fun setDefaultProfile(profile: Profile, sub: String) {
 fun getProfile(uuid: UUID): Profile? {
     return db.getCollection("profiles").find(Filters.eq("uuid", uuid.toString())).firstOrNull()?.jsoned(Profile::class.java)
 }
+fun getProfileByUsername(username: String): Profile? {
+    return db.getCollection("profiles").find(Filters.eq("username", username)).firstOrNull()?.jsoned(Profile::class.java)
+}
 
 fun getDefaultProfile(sub: String): Profile? {
     return db.getCollection("users").find(Filters.eq("sub", sub)).firstOrNull()

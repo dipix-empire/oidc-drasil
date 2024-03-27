@@ -79,10 +79,10 @@ fun main() {
                 println(
                     call.request.headers.toMap().asIterable()
                         .joinToString("\n") { "${it.key}: ${it.value.joinToString(", ")}" })
-                if (call.request.headers.get("Accept")?.contains("text/html") == true) {
-                    call.respond("uwu")
-                    return@get
-                }
+//                if (call.request.userAgent()?.lowercase()?.contains("java") != true) {
+//                    call.respond("uwu")
+//                    return@get
+//                }
 //                    call.response.header("X-Authlib-Injector-API-Location", "/api")
                 println("Responding with json!")
                 call.respond(jsonMapper.createObjectNode().apply {
@@ -117,14 +117,6 @@ fun main() {
                     return@post
                 }
                 val claims = getTokenClaims(refresh_token)
-                val res = jsonMapper.createObjectNode()
-                res.putObject("user").put("username", claims["preferred_username"].asText())
-                    .put("id", claims["sub"].asText()).putArray("properties")
-                res.put(
-                    "accessToken",
-                    "$token:$refresh_token"
-                ) // we include both cus yggdrasil doesn't have concept of refresh tokens
-                res.put("clientToken", body["clientToken"].asText())
                 val profiles = getProfilesFor(claims["sub"].asText())
                 if (profiles.isEmpty()) {
                     call.response.status(HttpStatusCode.Forbidden)
@@ -132,23 +124,32 @@ fun main() {
                     System.err.println("No profiles for ${claims["sub"].asText()}")
                     return@post
                 }
-                res.putArray("availableProfiles").apply {
-                    profiles.forEach {
-                        add(
-                            jsonMapper.createObjectNode()
-                                .apply { put("name", it.username); put("id", it.uuid.dashless()) })
-                    }
-                }
-                res.putObject("selectedProfile").apply {
-                    profiles.first { it.username == profile }
-                        .let {
-                            setDefaultProfile(it, claims["sub"].asText());
-                            put("name", it.username);
-                            put(
-                                "id",
-                                it.uuid.dashless()
-                            )
+                val res = jsonMapper.createObjectNode().apply {
+                    putObject("user").put("username", claims["preferred_username"].asText())
+                        .put("id", claims["sub"].asText()).putArray("properties")
+                    put(
+                        "accessToken",
+                        "$token:$refresh_token"
+                    ) // we include both cus yggdrasil doesn't have concept of refresh tokens
+                    put("clientToken", body["clientToken"].asText())
+                    putArray("availableProfiles").apply {
+                        profiles.forEach {
+                            add(
+                                jsonMapper.createObjectNode()
+                                    .apply { put("name", it.username); put("id", it.uuid.dashless()) })
                         }
+                    }
+                    putObject("selectedProfile").apply {
+                        profiles.first { it.username == profile }
+                            .let {
+                                setDefaultProfile(it, claims["sub"].asText());
+                                put("name", it.username);
+                                put(
+                                    "id",
+                                    it.uuid.dashless()
+                                )
+                            }
+                    }
                 }
                 call.response.header("Content-Type", "application/json")
                 println(jsonMapper.writeValueAsString(res))
@@ -240,6 +241,35 @@ fun main() {
                 }
                 val sub = getTokenClaims(token)["sub"].asText()!!
                 call.respond(insertProfile(Profile(UUID.randomUUID(), name), sub).asObjectId().value.toHexString())
+            }
+            post("/sessionserver/session/minecraft/join") {
+                val body = call.receive<ObjectNode>()
+                val (token, refreshToken) = body["accessToken"].asText().split(":")
+                if(!isTokenValid(token)) {
+                    call.response.status(HttpStatusCode.Forbidden)
+                    call.respond("invalid token!")
+                    return@post
+                }
+                call.response.status(HttpStatusCode.NoContent)
+                call.respond("")
+            }
+            get("/sessionserver/session/minecraft/hasJoined") {
+                val username = call.request.queryParameters["username"]!!
+                val profile = getProfileByUsername(username)!!
+                val res = jsonMapper.createObjectNode().apply {
+                    put("id", profile.uuid.dashless())
+                    put("name", profile.username)
+                    putArray("properties").addObject().apply {
+                        put("name", "textures")
+                        put("value", jsonMapper.writeValueAsString(jsonMapper.createObjectNode().apply {
+                            put("timestamp", System.currentTimeMillis())
+                            put("profileId", profile.uuid.dashless())
+                            put("profileName", profile.username)
+                            putObject("textures")
+                        }).encodeBase64())
+                    }
+                }
+                call.respond(res)
             }
         }
     }.start(wait = true)
