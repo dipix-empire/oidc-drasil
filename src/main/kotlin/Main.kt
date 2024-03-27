@@ -61,9 +61,6 @@ suspend fun refreshToken(refreshToken: String): Pair<String, String> {
 
 @OptIn(ExperimentalStdlibApi::class)
 fun main() {
-    println(parseDashlessUUID(
-        "5231b533ba17478798a3f2df37de2aD7"
-    ))
     embeddedServer(Netty, port = 8080) {
         install(CallLogging)
         install(IgnoreTrailingSlash)
