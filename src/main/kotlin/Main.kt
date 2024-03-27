@@ -19,6 +19,7 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.util.*
 import java.io.File
+import java.net.URL
 import java.net.URLEncoder
 import java.util.*
 
@@ -92,6 +93,9 @@ fun main() {
                         put("implementationVersion", "snapshot")
                         put("feature.non_email_login", true)
                     }
+                    putArray("skinDomains").apply {
+                        add(config.host.host)
+                    }
                 })
             }
 //            get("/api") {
@@ -108,7 +112,7 @@ fun main() {
             post("/authserver/authenticate") {
                 val body = call.receive<ObjectNode>()
                 println(body)
-                val profile = body["username"].asText()
+                val profileUsername = body["username"].asText()
                 val (token, refresh_token) = refreshToken(body["password"].asText())
                 if (!isTokenValid(refresh_token)) {
                     call.response.status(HttpStatusCode.Forbidden)
@@ -125,7 +129,7 @@ fun main() {
                     return@post
                 }
                 val res = jsonMapper.createObjectNode().apply {
-                    putObject("user").put("username", claims["preferred_username"].asText())
+                    putObject("user").put("username", profileUsername)
                         .put("id", claims["sub"].asText()).putArray("properties")
                     put(
                         "accessToken",
@@ -140,7 +144,7 @@ fun main() {
                         }
                     }
                     putObject("selectedProfile").apply {
-                        profiles.first { it.username == profile }
+                        profiles.first { it.username == profileUsername }
                             .let {
                                 setDefaultProfile(it, claims["sub"].asText());
                                 put("name", it.username);
@@ -184,12 +188,7 @@ fun main() {
                     put("name", profile.username)
                     putArray("properties").addObject().apply {
                         put("name", "textures")
-                        put("value", jsonMapper.writeValueAsString(jsonMapper.createObjectNode().apply {
-                            put("timestamp", System.currentTimeMillis())
-                            put("profileId", profile.uuid.dashless())
-                            put("profileName", profile.username)
-                            putObject("textures")
-                        }).encodeBase64())
+                        put("value", texturesForProfile(profile).encodeBase64())
                     }
                 }
                 call.respond(res)
@@ -228,19 +227,55 @@ fun main() {
                 )
             }
             post("/oauth/check") {
-                val token = call.receiveText()
+                val token = call.request.authorization()!!.replace("Bearer", "").trim()
                 call.respondText(isTokenValid(token).toString())
             }
-            post("/create-profile") {
-                val token = call.receiveText()
+            post("/api/create-profile") {
+                val token = call.request.authorization()!!.replace("Bearer", "").trim()
                 val name = call.request.queryParameters["name"]!!
                 if (!isTokenValid(token)) {
                     call.response.status(HttpStatusCode.Forbidden)
                     call.respond("Invalid access token")
                     return@post
                 }
-                val sub = getTokenClaims(token)["sub"].asText()!!
-                call.respond(insertProfile(Profile(UUID.randomUUID(), name), sub).asObjectId().value.toHexString())
+                val claims = getTokenClaims(token)
+                val sub = claims["sub"].asText()!!
+                val profiles = getProfilesFor(sub)
+                if(profiles.size >= claims["minecraft"]["max_profiles"].asInt(1)) {
+                    call.response.status(HttpStatusCode.Unauthorized)
+                    call.respond("Profile maximum reached. No more profiles allowed.")
+                    return@post
+                }
+                call.respond(insertProfile(Profile(UUID.randomUUID(), username = name, owner = sub)).asObjectId().value.toHexString())
+            }
+            post("/api/{profile}/upload-skin") {
+                val token = call.request.authorization()!!.replace("Bearer", "").trim()
+                if (!isTokenValid(token)) {
+                    call.response.status(HttpStatusCode.Forbidden)
+                    call.respond("Invalid access token")
+                    return@post
+                }
+                val claims = getTokenClaims(token)
+                val profileId = call.parameters["profile"]!!
+                val profile = getProfile(parseDashlessUUID(profileId))!!
+                if(claims["sub"].asText() != profile.owner) {
+                    call.response.status(HttpStatusCode.Forbidden)
+                    call.respond("Not a profile owner.")
+                    return@post
+                }
+                val data = call.receive<ByteArray>()
+                val model = call.request.queryParameters["model"] ?: "classic"
+                if(model != "classic" && model != "slim") {
+                    call.response.status(HttpStatusCode.BadRequest)
+                    call.respond("Model must be classic or slim")
+                    return@post
+                }
+                val id = uploadTexture(data)
+                updateProfile(profile.copy(skinId = id, skinModel = model))
+                call.respond("")
+            }
+            get("/textures/{id}") {
+                call.respond(readTexture(call.parameters["id"]!!))
             }
             post("/sessionserver/session/minecraft/join") {
                 val body = call.receive<ObjectNode>()
@@ -261,12 +296,7 @@ fun main() {
                     put("name", profile.username)
                     putArray("properties").addObject().apply {
                         put("name", "textures")
-                        put("value", jsonMapper.writeValueAsString(jsonMapper.createObjectNode().apply {
-                            put("timestamp", System.currentTimeMillis())
-                            put("profileId", profile.uuid.dashless())
-                            put("profileName", profile.username)
-                            putObject("textures")
-                        }).encodeBase64())
+                        put("value", texturesForProfile(profile).encodeBase64())
                     }
                 }
                 call.respond(res)

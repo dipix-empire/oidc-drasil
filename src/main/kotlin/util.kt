@@ -2,6 +2,7 @@ package pw.dipix.auth
 
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import java.security.MessageDigest
 import java.util.Base64
 import java.util.UUID
 
@@ -20,3 +21,9 @@ fun parseDashlessUUID(string: String): UUID {
 }
 
 fun UUID.dashless() = this.toString().replace("-", "")
+
+@OptIn(ExperimentalStdlibApi::class)
+fun hash(data: ByteArray, algo: String): String {
+    val hasher = MessageDigest.getInstance(algo)
+    return hasher.digest(data).toHexString(HexFormat.Default)
+}

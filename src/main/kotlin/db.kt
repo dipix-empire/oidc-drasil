@@ -21,7 +21,7 @@ val db = MongoClients.create(
     createCollection("users")
 }
 
-data class Profile(val uuid: UUID, val username: String)
+data class Profile(val uuid: UUID, val username: String, val skinId: String? = null, val skinModel: String? = null, val owner: String)
 
 data class User(val sub: String, val defaultProfile: UUID)
 
@@ -39,8 +39,8 @@ fun getProfilesFor(sub: String): List<Profile> {
         .apply { println("this") }.map { it.jsoned(Profile::class.java) }.toList()
 }
 
-fun insertProfile(profile: Profile, ownerSub: String): BsonValue {
-    return db.getCollection("profiles").insertOne(profile.documented().append("owner", ownerSub)).insertedId!!
+fun insertProfile(profile: Profile): BsonValue {
+    return db.getCollection("profiles").insertOne(profile.documented()).insertedId!!
 }
 
 fun setDefaultProfile(profile: Profile, sub: String) {
@@ -63,4 +63,8 @@ fun getProfileByUsername(username: String): Profile? {
 fun getDefaultProfile(sub: String): Profile? {
     return db.getCollection("users").find(Filters.eq("sub", sub)).firstOrNull()
         ?.jsoned(User::class.java)?.defaultProfile?.let { getProfile(it) }
+}
+
+fun updateProfile(profile: Profile): Document? {
+    return db.getCollection("profiles").findOneAndReplace(Filters.eq("uuid", profile.uuid.toString()), profile.documented())
 }
