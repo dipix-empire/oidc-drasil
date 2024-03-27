@@ -20,6 +20,7 @@ class Config(
     class Oauth(
         val client_id: String,
         val client_secret: String,
-        val scope: String
+        val scope: String,
+        val redirect_url: URL
     )
 }

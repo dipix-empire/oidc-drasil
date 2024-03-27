@@ -42,14 +42,9 @@ suspend fun isTokenValid(token: String): Boolean {
         .run { get("active").asBoolean() && get("scope").textValue().contains(config.scope) }
 }
 
-suspend fun getTokenClaims(token: String): ObjectNode {
-    return client.post(config.introspect) {
-        basicAuth(config.oauth.client_id, config.oauth.client_secret) // ?
-        setBody(FormDataContent(Parameters.build {
-            set("token", token)
-            set("scope", config.oauth.scope)
-        }))
-    }.body<ObjectNode>().apply { println("get token claims"); println(this); println(token) }
+fun getTokenClaims(token: String): ObjectNode {
+    val payload = jsonMapper.readValue(token.split(".")[1].decodeBase64String(), ObjectNode::class.java)
+    return payload.apply { println("get token claims"); println(this); println(token) }
 }
 
 suspend fun refreshToken(refreshToken: String): Pair<String, String> {
@@ -120,7 +115,7 @@ fun main() {
                     System.err.println("Invalid password: invalid access token $refresh_token")
                     return@post
                 }
-                val claims = getTokenClaims(refresh_token)
+                val claims = getTokenClaims(token)
                 val profiles = getProfilesFor(claims["sub"].asText())
                 if (profiles.isEmpty()) {
                     call.response.status(HttpStatusCode.Forbidden)
@@ -165,7 +160,7 @@ fun main() {
                 val clientToken = body["clientToken"].asText()!!
                 val (token, refreshToken) = body["accessToken"].asText().split(":").let { println("refresh ole: ${it[1]}"); refreshToken(it[1]) }
                 println("new refresh: $refreshToken")
-                val claims = getTokenClaims(refreshToken)
+                val claims = getTokenClaims(token)
                 val res = jsonMapper.createObjectNode()
                 res.put("clientToken", clientToken)
                 res.put("accessToken", "$token:$refreshToken")
@@ -198,7 +193,7 @@ fun main() {
                     Url(
                         "${config.authorize}?response_type=code&client_id=${config.oauth.client_id}&scope=${config.oauth.scope}&redirect_uri=${
                             URLEncoder.encode(
-                                "http://localhost:8080/oauth/callback",
+                                config.oauth.redirect_url.toString(),
                                 "UTF-8"
                             )
                         }"
@@ -242,7 +237,7 @@ fun main() {
                 val sub = claims["sub"].asText()!!
                 val profiles = getProfilesFor(sub)
                 if(profiles.size >= claims["minecraft"]["max_profiles"].asInt(1)) {
-                    call.response.status(HttpStatusCode.Unauthorized)
+                    call.response.status(HttpStatusCode.Forbidden)
                     call.respond("Profile maximum reached. No more profiles allowed.")
                     return@post
                 }
