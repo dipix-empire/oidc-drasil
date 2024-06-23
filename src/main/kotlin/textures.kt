@@ -15,26 +15,18 @@ interface IdentifiedStorage {
     fun read(identifier: String): ByteArray
 }
 
-class LocalStorage : IdentifiedStorage {
+object LocalStorage : IdentifiedStorage {
     override fun upload(binary: ByteArray): String {
-        TODO("Not yet implemented")
+        val file = config.storage_dir.apply { mkdirs() }.resolve(hash(binary, "SHA-256"))
+        file.writeBytes(binary)
+        return file.name
     }
 
     override fun read(identifier: String): ByteArray {
-        TODO("Not yet implemented")
+        val file = config.storage_dir.apply { mkdirs() }.resolve(identifier)
+        return file.readBytes()
     }
 
-}
-
-fun uploadTexture(binary: ByteArray): String {
-    val file = config.textures_dir.apply { mkdirs() }.resolve(hash(binary, "SHA-256"))
-    file.writeBytes(binary)
-    return file.name
-}
-
-fun readTexture(hash: String): ByteArray {
-    val file = config.textures_dir.apply { mkdirs() }.resolve(hash)
-    return file.readBytes()
 }
 
 fun texturesForProfile(profile: Profile): String =

@@ -262,12 +262,12 @@ fun main() {
                     call.respond("Model must be classic or slim")
                     return@post
                 }
-                val id = uploadTexture(data)
+                val id = LocalStorage.upload(data)
                 updateProfile(profile.copy(skinId = id, skinModel = model))
                 call.respond("")
             }
             get("/textures/{id}") {
-                call.respond(readTexture(call.parameters["id"]!!))
+                call.respond(LocalStorage.read(call.parameters["id"]!!))
             }
             post("/sessionserver/session/minecraft/join") {
                 val body = call.receive<ObjectNode>()
